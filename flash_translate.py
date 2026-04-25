@@ -114,7 +114,9 @@ class TranslationPopup:
         self.win.geometry(f'{POPUP_W}x{POPUP_H}+{px}+{py}')
 
         self._drag_ox = self._drag_oy = 0
+        self._timer_id = None
         self._build(original, translated, pronunciation)
+        self._start_timer()
         self.win.bind('<Escape>', lambda _e: self.close())
 
     def _build(self, original: str, translated: str, pronunciation: Optional[str]):
@@ -132,9 +134,9 @@ class TranslationPopup:
         close.bind('<Button-1>', lambda _e: self.close())
         _hover(close, C_TEXT, C_SUBTEXT, C_CRUST)
 
-        for w in (bar, close):
-            w.bind('<Button-1>', self._drag_start)
-            w.bind('<B1-Motion>', self._drag_move)
+        # 只在標題列綁拖移，不包含 X 按鈕（否則會覆蓋關閉事件）
+        bar.bind('<Button-1>', self._drag_start)
+        bar.bind('<B1-Motion>', self._drag_move)
 
         # ── 按鈕列固定在底部 ────────────────────────────────────────────────
         btn_bar = tk.Frame(self.win, bg=C_CRUST, padx=14, pady=6)
@@ -250,8 +252,15 @@ class TranslationPopup:
         ny = self.win.winfo_y() + e.y - self._drag_oy
         self.win.geometry(f'+{nx}+{ny}')
 
+    def _start_timer(self):
+        if self._timer_id:
+            self.win.after_cancel(self._timer_id)
+        self._timer_id = self.win.after(15_000, self.close)
+
     def close(self):
         try:
+            if self._timer_id:
+                self.win.after_cancel(self._timer_id)
             self.win.destroy()
         except Exception:
             pass
