@@ -154,8 +154,8 @@ class TranslationPopup:
         _btn(btn_bar, '📋 複製', lambda: self._copy(translated)).pack(side='left', padx=(6, 0))
 
         # ── 原文 (灰色、截斷) ────────────────────────────────────────────────
-        top = tk.Frame(self.win, bg=C_BASE, padx=14, pady=(8, 4))
-        top.pack(fill='x')
+        top = tk.Frame(self.win, bg=C_BASE, padx=14)
+        top.pack(fill='x', pady=(8, 4))
 
         short = original if len(original) <= 70 else original[:70] + '…'
         tk.Label(top, text=short, fg=C_SUBTEXT, bg=C_BASE,
