@@ -113,10 +113,8 @@ class TranslationPopup:
         px, py = clamp(x, y, POPUP_W, POPUP_H, parent)
         self.win.geometry(f'{POPUP_W}x{POPUP_H}+{px}+{py}')
 
-        self._timer_id = None
         self._drag_ox = self._drag_oy = 0
         self._build(original, translated, pronunciation)
-        self._auto_close()
         self.win.bind('<Escape>', lambda _e: self.close())
 
     def _build(self, original: str, translated: str, pronunciation: Optional[str]):
@@ -252,13 +250,8 @@ class TranslationPopup:
         ny = self.win.winfo_y() + e.y - self._drag_oy
         self.win.geometry(f'+{nx}+{ny}')
 
-    def _auto_close(self):
-        self._timer_id = self.win.after(POPUP_TIMEOUT_MS, self.close)
-
     def close(self):
         try:
-            if self._timer_id:
-                self.win.after_cancel(self._timer_id)
             self.win.destroy()
         except Exception:
             pass
