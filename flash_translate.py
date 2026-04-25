@@ -301,25 +301,27 @@ class FlashTranslate:
 
         self._popup: Optional[TranslationPopup] = None
         self._last_ctrl_time = 0.0
-        self._ctrl_is_clean = True   # Ctrl 按下後沒有按其他鍵
-        self._busy = False           # 翻譯中 / 內部 Ctrl+C 期間
+        self._ctrl_is_clean = True
+        self._busy = False        # 正在送出內部 Ctrl+C 期間
+        self._translating = False # 翻譯流程執行中，防止重複觸發
+        self._ignore_until = 0.0  # 送出 Ctrl+C 後的冷卻，避免合成事件干擾偵測
 
         keyboard.hook(self._key_event)
         keyboard.add_hotkey('ctrl+shift+t',
-                             lambda: None if self._busy else self._trigger())
+                             lambda: None if self._busy or self._translating else self._trigger())
 
         print('=' * 40)
         print('  Flash Translate 已啟動')
         print('  • 選取文字後，快速雙擊 Ctrl 翻譯')
         print('  • 或使用快捷鍵 Ctrl+Shift+T')
-        print('  • 按 Esc 或等待 8 秒關閉翻譯視窗')
+        print('  • 按 Esc 或右上角 X 關閉翻譯視窗')
         print('  • 在此視窗按 Ctrl+C 可退出程式')
         print('=' * 40)
 
     # ── 鍵盤事件處理 ──────────────────────────────────────────────────────────
 
     def _key_event(self, event):
-        if self._busy:
+        if self._busy or time.time() < self._ignore_until:
             return
 
         name = event.name or ''
@@ -344,51 +346,64 @@ class FlashTranslate:
                 self._ctrl_is_clean = False
 
     def _trigger(self):
+        if self._translating:
+            return
         threading.Thread(target=self._do_translate, daemon=True).start()
 
     # ── 翻譯流程 ──────────────────────────────────────────────────────────────
 
     def _do_translate(self):
-        # 儲存剪貼簿原始內容
+        self._translating = True
+        try:
+            self._run_translate()
+        finally:
+            self._translating = False
+
+    def _run_translate(self):
+        # 儲存原始剪貼簿，並放入哨兵值以偵測是否有選取文字
+        _SENTINEL = '\x01FLASH_TRANSLATE\x01'
         try:
             prev = pyperclip.paste()
+            pyperclip.copy(_SENTINEL)
         except Exception:
             prev = ''
 
         # 模擬 Ctrl+C 複製選取文字
         self._busy = True
         keyboard.send('ctrl+c')
-        time.sleep(0.25)
+        time.sleep(0.3)
         self._busy = False
+        # 送出後冷卻 300ms，讓合成事件消化完再恢復 Ctrl 偵測
+        self._ignore_until = time.time() + 0.3
 
         try:
             text = pyperclip.paste()
         except Exception:
-            return
+            text = ''
+        finally:
+            # 立即還原剪貼簿（不需要延遲）
+            try:
+                pyperclip.copy(prev)
+            except Exception:
+                pass
 
         text = text.strip()
 
-        # 驗證：有拿到新文字且長度合理
-        if not text or text == prev or len(text) > 1000:
-            self._restore_clipboard(prev)
+        # 剪貼簿仍是哨兵 → 沒有選取文字
+        if not text or text == _SENTINEL or len(text) > 1000:
             return
 
         # 智慧判斷翻譯方向
-        if is_chinese(text):
-            target = 'en'
-        else:
-            target = FALLBACK_TARGET
+        target = 'en' if is_chinese(text) else FALLBACK_TARGET
 
         # 呼叫 Google 翻譯
         try:
             translated = GoogleTranslator(source='auto', target=target).translate(text)
         except Exception as e:
             print(f'翻譯錯誤: {e}')
-            self._restore_clipboard(prev)
             return
 
         if not translated or translated.strip() == text.strip():
-            self._restore_clipboard(prev)
             return
 
         # 取得拼音（中文原文 → 顯示原文拼音；翻譯結果是中文 → 顯示譯文拼音）
@@ -398,31 +413,18 @@ class FlashTranslate:
         elif is_chinese(translated):
             pronunciation = get_pinyin(translated)
 
-        # 取得滑鼠位置
         x, y = cursor_pos()
-
-        # 在主執行緒顯示視窗
         self.root.after(0, self._show_popup, x, y, text, translated, pronunciation)
 
-        # 延遲還原剪貼簿
-        self._restore_clipboard(prev, delay=1.5)
-
-    def _restore_clipboard(self, content: str, delay: float = 0.0):
-        def _restore():
-            if delay:
-                time.sleep(delay)
-            try:
-                pyperclip.copy(content)
-            except Exception:
-                pass
-        threading.Thread(target=_restore, daemon=True).start()
-
     def _show_popup(self, x, y, original, translated, pronunciation):
-        if self._popup:
-            self._popup.close()
-        self._popup = TranslationPopup(
-            self.root, x, y, original, translated, pronunciation
-        )
+        try:
+            if self._popup:
+                self._popup.close()
+            self._popup = TranslationPopup(
+                self.root, x, y, original, translated, pronunciation
+            )
+        except Exception as e:
+            print(f'視窗錯誤: {e}')
 
     def run(self):
         try:
