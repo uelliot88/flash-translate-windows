@@ -38,17 +38,21 @@ except ImportError:
     HAS_WIN32 = False
 
 try:
-    import pyttsx3
+    from gtts import gTTS
+    import pygame
+    import tempfile, os
     HAS_TTS = True
-except ImportError:
+    pygame.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=512)
+    pygame.mixer.init()
+except Exception:
     HAS_TTS = False
-    print("提示: 安裝 pyttsx3 可使用發音功能 (pip install pyttsx3)")
+    print("提示: 安裝 gtts 和 pygame 可使用語音功能 (pip install gtts pygame)")
 
 
 # ── 設定 ──────────────────────────────────────────────────────────────────────
 DOUBLE_TAP_MS    = 400       # 雙擊 Ctrl 最大間隔 (毫秒)
 POPUP_TIMEOUT_MS = 8_000     # 浮動視窗自動關閉時間 (毫秒)
-POPUP_W, POPUP_H = 360, 200
+POPUP_W, POPUP_H = 360, 210
 FALLBACK_TARGET  = 'zh-TW'   # 非中文文字的預設翻譯目標
 
 # ── Catppuccin Mocha 配色 ─────────────────────────────────────────────────────
@@ -160,18 +164,28 @@ class TranslationPopup:
         row = tk.Frame(body, bg=C_BASE)
         row.pack(fill='x', pady=(10, 0))
 
-        _btn(row, '🔊 發音', lambda: self._speak(original)).pack(side='left')
+        _btn(row, '🔊 原文', lambda: self._speak(original)).pack(side='left')
+        _btn(row, '🔊 譯文', lambda: self._speak(translated)).pack(side='left', padx=(6, 0))
         _btn(row, '📋 複製', lambda: self._copy(translated)).pack(side='left', padx=(6, 0))
 
     def _speak(self, text: str):
         if not HAS_TTS:
-            print("pyttsx3 未安裝，無法發音。請執行: pip install pyttsx3")
+            print("語音套件未安裝，請執行: pip install gtts pygame")
             return
+        lang = 'zh-tw' if is_chinese(text) else 'en'
         def _run():
             try:
-                engine = pyttsx3.init()
-                engine.say(text)
-                engine.runAndWait()
+                tts = gTTS(text=text, lang=lang, slow=False)
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
+                tmp_path = tmp.name
+                tmp.close()
+                tts.save(tmp_path)
+                pygame.mixer.music.load(tmp_path)
+                pygame.mixer.music.play()
+                while pygame.mixer.music.get_busy():
+                    time.sleep(0.05)
+                pygame.mixer.music.unload()
+                os.unlink(tmp_path)
             except Exception as e:
                 print(f'TTS 錯誤: {e}')
         threading.Thread(target=_run, daemon=True).start()

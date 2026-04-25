@@ -2,5 +2,6 @@ keyboard
 pyperclip
 deep-translator
 pypinyin
-pyttsx3
+gtts
+pygame
 pywin32
