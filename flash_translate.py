@@ -142,8 +142,15 @@ class TranslationPopup:
         btn_bar = tk.Frame(self.win, bg=C_CRUST, padx=14, pady=6)
         btn_bar.pack(side='bottom', fill='x')
 
-        _btn(btn_bar, '🔊 原文', lambda: self._speak(original)).pack(side='left')
-        _btn(btn_bar, '🔊 譯文', lambda: self._speak(translated)).pack(side='left', padx=(6, 0))
+        # 語音按鈕需要保留參考以切換圖示
+        b_orig = _speak_btn(btn_bar, '🔊 原文')
+        b_orig.bind('<Button-1>', lambda e: self._speak_toggle(original, b_orig, '🔊 原文'))
+        b_orig.pack(side='left')
+
+        b_trans = _speak_btn(btn_bar, '🔊 譯文')
+        b_trans.bind('<Button-1>', lambda e: self._speak_toggle(translated, b_trans, '🔊 譯文'))
+        b_trans.pack(side='left', padx=(6, 0))
+
         _btn(btn_bar, '📋 複製', lambda: self._copy(translated)).pack(side='left', padx=(6, 0))
 
         # ── 原文 (灰色、截斷) ────────────────────────────────────────────────
@@ -173,21 +180,34 @@ class TranslationPopup:
         txt.pack(side='left', fill='both', expand=True)
         sb.configure(command=txt.yview)
 
-        txt.insert('end', translated)
+        # 必須先設定 tag 再 insert，disabled 狀態下 tag 顏色才能覆蓋系統灰色
+        txt.tag_configure('body', foreground=C_TEXT, font=('Segoe UI', 12, 'bold'))
+        txt.tag_configure('pinyin', foreground=C_BLUE, font=('Segoe UI', 9))
+
+        txt.insert('end', translated, 'body')
         if pronunciation:
             txt.insert('end', f'\n{pronunciation}', 'pinyin')
         txt.configure(state='disabled')
-        txt.tag_configure('pinyin', font=('Segoe UI', 9), foreground=C_BLUE)
 
         # 滑鼠滾輪捲動
         txt.bind('<MouseWheel>',
                  lambda e: txt.yview_scroll(-1 * (e.delta // 120), 'units'))
 
-    def _speak(self, text: str):
+    def _speak_toggle(self, text: str, btn: tk.Label, play_label: str):
         if not HAS_TTS:
             print("語音套件未安裝，請執行: pip install gtts pygame")
             return
+
+        if pygame.mixer.music.get_busy():
+            # 正在播放 → 立即停止
+            pygame.mixer.music.stop()
+            btn.config(text=play_label)
+            return
+
+        # 尚未播放 → 開始播放
         lang = 'zh-tw' if is_chinese(text) else 'en'
+        btn.config(text='⏹ 停止')
+
         def _run():
             try:
                 tts = gTTS(text=text, lang=lang, slow=False)
@@ -203,6 +223,13 @@ class TranslationPopup:
                 os.unlink(tmp_path)
             except Exception as e:
                 print(f'TTS 錯誤: {e}')
+            finally:
+                # 播放結束後在主執行緒還原按鈕文字
+                try:
+                    btn.after(0, lambda: btn.config(text=play_label))
+                except Exception:
+                    pass
+
         threading.Thread(target=_run, daemon=True).start()
 
     def _copy(self, text: str):
@@ -237,6 +264,14 @@ def _btn(parent, text: str, cmd) -> tk.Label:
     b = tk.Label(parent, text=text, fg=C_BLUE, bg=C_SURFACE,
                  font=('Segoe UI', 9), padx=9, pady=3, cursor='hand2')
     b.bind('<Button-1>', lambda _e: cmd())
+    _hover(b, C_LAVENDER, C_BLUE, C_SURFACE, C_OVERLAY)
+    return b
+
+
+def _speak_btn(parent, text: str) -> tk.Label:
+    """語音按鈕（不預綁指令，由呼叫端設定 toggle 行為）"""
+    b = tk.Label(parent, text=text, fg=C_BLUE, bg=C_SURFACE,
+                 font=('Segoe UI', 9), padx=9, pady=3, cursor='hand2')
     _hover(b, C_LAVENDER, C_BLUE, C_SURFACE, C_OVERLAY)
     return b
 
