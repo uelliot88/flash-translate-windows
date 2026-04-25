@@ -52,7 +52,7 @@ except Exception:
 # ── 設定 ──────────────────────────────────────────────────────────────────────
 DOUBLE_TAP_MS    = 400       # 雙擊 Ctrl 最大間隔 (毫秒)
 POPUP_TIMEOUT_MS = 8_000     # 浮動視窗自動關閉時間 (毫秒)
-POPUP_W, POPUP_H = 360, 210
+POPUP_W, POPUP_H = 380, 280
 FALLBACK_TARGET  = 'zh-TW'   # 非中文文字的預設翻譯目標
 
 # ── Catppuccin Mocha 配色 ─────────────────────────────────────────────────────
@@ -138,35 +138,50 @@ class TranslationPopup:
             w.bind('<Button-1>', self._drag_start)
             w.bind('<B1-Motion>', self._drag_move)
 
-        # ── 主體 ───────────────────────────────────────────────────────────
-        body = tk.Frame(self.win, bg=C_BASE, padx=14, pady=8)
-        body.pack(fill='both', expand=True)
+        # ── 按鈕列固定在底部 ────────────────────────────────────────────────
+        btn_bar = tk.Frame(self.win, bg=C_CRUST, padx=14, pady=6)
+        btn_bar.pack(side='bottom', fill='x')
 
-        # 原文 (灰色、截斷)
+        _btn(btn_bar, '🔊 原文', lambda: self._speak(original)).pack(side='left')
+        _btn(btn_bar, '🔊 譯文', lambda: self._speak(translated)).pack(side='left', padx=(6, 0))
+        _btn(btn_bar, '📋 複製', lambda: self._copy(translated)).pack(side='left', padx=(6, 0))
+
+        # ── 原文 (灰色、截斷) ────────────────────────────────────────────────
+        top = tk.Frame(self.win, bg=C_BASE, padx=14, pady=(8, 4))
+        top.pack(fill='x')
+
         short = original if len(original) <= 70 else original[:70] + '…'
-        tk.Label(body, text=short, fg=C_SUBTEXT, bg=C_BASE,
+        tk.Label(top, text=short, fg=C_SUBTEXT, bg=C_BASE,
                  font=('Segoe UI', 9), anchor='w',
-                 wraplength=330, justify='left').pack(fill='x')
+                 wraplength=350, justify='left').pack(fill='x')
 
-        tk.Frame(body, bg=C_SURFACE, height=1).pack(fill='x', pady=6)
+        tk.Frame(self.win, bg=C_SURFACE, height=1).pack(fill='x', padx=14)
 
-        # 翻譯結果
-        tk.Label(body, text=translated, fg=C_TEXT, bg=C_BASE,
-                 font=('Segoe UI', 13, 'bold'), anchor='w',
-                 wraplength=330, justify='left').pack(fill='x')
+        # ── 可捲動翻譯區 ────────────────────────────────────────────────────
+        scroll_frame = tk.Frame(self.win, bg=C_BASE, padx=14, pady=8)
+        scroll_frame.pack(fill='both', expand=True)
 
-        # 拼音/發音
+        sb = tk.Scrollbar(scroll_frame, orient='vertical')
+        sb.pack(side='right', fill='y')
+
+        txt = tk.Text(scroll_frame, bg=C_BASE, fg=C_TEXT,
+                      font=('Segoe UI', 12, 'bold'),
+                      wrap='word', relief='flat', bd=0,
+                      cursor='arrow', padx=0, pady=0,
+                      selectbackground=C_SURFACE,
+                      yscrollcommand=sb.set)
+        txt.pack(side='left', fill='both', expand=True)
+        sb.configure(command=txt.yview)
+
+        txt.insert('end', translated)
         if pronunciation:
-            tk.Label(body, text=pronunciation, fg=C_BLUE, bg=C_BASE,
-                     font=('Segoe UI', 9), anchor='w').pack(fill='x', pady=(4, 0))
+            txt.insert('end', f'\n{pronunciation}', 'pinyin')
+        txt.configure(state='disabled')
+        txt.tag_configure('pinyin', font=('Segoe UI', 9), foreground=C_BLUE)
 
-        # 按鈕列
-        row = tk.Frame(body, bg=C_BASE)
-        row.pack(fill='x', pady=(10, 0))
-
-        _btn(row, '🔊 原文', lambda: self._speak(original)).pack(side='left')
-        _btn(row, '🔊 譯文', lambda: self._speak(translated)).pack(side='left', padx=(6, 0))
-        _btn(row, '📋 複製', lambda: self._copy(translated)).pack(side='left', padx=(6, 0))
+        # 滑鼠滾輪捲動
+        txt.bind('<MouseWheel>',
+                 lambda e: txt.yview_scroll(-1 * (e.delta // 120), 'units'))
 
     def _speak(self, text: str):
         if not HAS_TTS:
