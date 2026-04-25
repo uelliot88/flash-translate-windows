@@ -1,0 +1,6 @@
+keyboard
+pyperclip
+deep-translator
+pypinyin
+pyttsx3
+pywin32
