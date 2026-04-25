@@ -224,9 +224,15 @@ class TranslationPopup:
             except Exception as e:
                 print(f'TTS 錯誤: {e}')
             finally:
-                # 播放結束後在主執行緒還原按鈕文字
+                # 播放結束後在主執行緒還原按鈕文字（視窗可能已關閉）
+                def _reset():
+                    try:
+                        if btn.winfo_exists():
+                            btn.config(text=play_label)
+                    except Exception:
+                        pass
                 try:
-                    btn.after(0, lambda: btn.config(text=play_label))
+                    btn.after(0, _reset)
                 except Exception:
                     pass
 
